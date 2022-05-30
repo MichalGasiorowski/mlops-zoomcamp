@@ -9,9 +9,11 @@ from hyperopt.pyll import scope
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 
-mlflow.set_tracking_uri("http://127.0.0.1:5000")
-mlflow.set_experiment("random-forest-hyperopt")
+mlflow.end_run() # ensure all other runs are ended
 
+mlflow.set_tracking_uri("http://127.0.0.1:5000")
+mlflow.set_experiment("random-forest-hyperopt-hw2")
+mlflow.set_tag("developer", "michal")
 
 def load_pickle(filename):
     with open(filename, "rb") as f_in:
@@ -24,11 +26,17 @@ def run(data_path, num_trials):
     X_valid, y_valid = load_pickle(os.path.join(data_path, "valid.pkl"))
 
     def objective(params):
+        #mlflow.end_run()
+        with mlflow.start_run(nested=True) as run:
+            mlflow.set_tag("model", "RandomForestRegressor")
+            for key, value in params.items():
+                mlflow.log_param(key, value)
+            rf = RandomForestRegressor(**params)
+            rf.fit(X_train, y_train)
+            y_pred = rf.predict(X_valid)
+            rmse = mean_squared_error(y_valid, y_pred, squared=False)
 
-        rf = RandomForestRegressor(**params)
-        rf.fit(X_train, y_train)
-        y_pred = rf.predict(X_valid)
-        rmse = mean_squared_error(y_valid, y_pred, squared=False)
+            mlflow.log_metric("rmse", rmse)
 
         return {'loss': rmse, 'status': STATUS_OK}
 

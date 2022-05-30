@@ -70,8 +70,7 @@ def run(raw_data_path: str, dest_path: str, dataset: str = "green"):
     dump_pickle((X_test, y_test), os.path.join(dest_path, "test.pkl"))
 
 
-if __name__ == '__main__':
-
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--raw_data_path",
@@ -84,3 +83,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     run(args.raw_data_path, args.dest_path)
+
+if __name__ == '__main__':
+    main()
+
