@@ -4,6 +4,9 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 
+from datetime import date, timedelta, datetime
+import dateutil.relativedelta
+
 from prefect import flow, task
 from prefect.task_runners import SequentialTaskRunner
 from prefect import logging as prefect_logging
@@ -65,10 +68,40 @@ def run_model(df, categorical, dv, lr):
     return
 
 
-@flow(task_runner=SequentialTaskRunner())
-def main(train_path: str = './data/fhv_tripdata_2021-01.parquet',
-           val_path: str = './data/fhv_tripdata_2021-02.parquet'):
+'''
+a. `date` should default to None
+b. If `date` is None, use the current day. Use the data from 2 months back as the training data and the data from the previous month as validation data.
+c. If a `date` value is supplied, get 2 months before the `date` as the training data, and the previous month as validation data.
+d. As a concrete example, if the date passed is "2021-03-15", the training data should be "fhv_tripdata_2021-01.parquet" and the validation file will be "fhv_trip_data_2021-02.parquet"
+'''
+@task
+def get_paths(date_string=None, months_back_for_training_range=(2, 3), months_back_for_valid_range=(1, 2)):
+    if date_string is None:
+        date_string = date.today()
 
+    datem = date.fromisoformat(date_string)
+
+    training_months_dt = [datem - dateutil.relativedelta.relativedelta(months=i) for i in months_back_for_training_range]
+    validation_months_dt = [datem - dateutil.relativedelta.relativedelta(months=i) for i in months_back_for_valid_range]
+
+    # pad with extra '0' for months
+    training_months_paths = [f'./data/fhv_tripdata_{dt.year}-{dt.month:02}.parquet' for dt in training_months_dt]
+    validation_months_paths = [f'./data/fhv_tripdata_{dt.year}-{dt.month:02}.parquet' for dt in validation_months_dt]
+
+    # return single files for training, since main() expects it in this format
+    # more files for training, validation are possible
+    return training_months_paths[0], validation_months_paths[0]
+
+
+# assert(get_paths("2021-03-15") == ('./data/fhv_tripdata_2021-01.parquet', './data/fhv_tripdata_2021-02.parquet'))
+
+
+@flow(task_runner=SequentialTaskRunner())
+def main(date):
+    logger = prefect_logging.get_run_logger()
+
+    train_path, val_path = get_paths(date).result()
+    logger.info(f'Path for training: {train_path}, Path for validation: {val_path}')
     categorical = ['PUlocationID', 'DOlocationID']
 
     df_train = read_data(train_path)
@@ -82,4 +115,4 @@ def main(train_path: str = './data/fhv_tripdata_2021-01.parquet',
     run_model(df_val_processed, categorical, dv, lr)
 
 
-main()
+main(date="2021-08-15")
