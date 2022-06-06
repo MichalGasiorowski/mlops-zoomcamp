@@ -11,6 +11,8 @@ from prefect import flow, task
 from prefect.task_runners import SequentialTaskRunner
 from prefect import logging as prefect_logging
 
+import pickle
+
 
 @task
 def read_data(path):
@@ -112,6 +114,13 @@ def main(date):
 
     # train the model
     lr, dv = train_model(df_train_processed, categorical).result()
+
+    # save the model and dv
+    # In this example we use a DictVectorizer. That is needed to run future data through our model.
+    with open(f'models/model-{date}.pkl', "wb") as f_out:
+        pickle.dump(lr, f_out)
+    with open(f'models/dv-{date}.pkl', "wb") as f_out:
+        pickle.dump(dv, f_out)
     run_model(df_val_processed, categorical, dv, lr)
 
 
