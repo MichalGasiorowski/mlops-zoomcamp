@@ -124,4 +124,18 @@ def main(date):
     run_model(df_val_processed, categorical, dv, lr)
 
 
-main(date="2021-08-15")
+from prefect.deployments import DeploymentSpec
+from prefect.orion.schemas.schedules import CronSchedule
+from prefect.flow_runners import SubprocessFlowRunner
+
+DeploymentSpec(
+    flow=main,
+    name="cron-schedule-deployment",
+    schedule=CronSchedule(
+        cron="0 9 15 * *",
+        timezone="Europe/Warsaw"),
+    flow_runner=SubprocessFlowRunner(),
+    tags=["hw3"]
+)
+
+#main(date="2021-08-15")
