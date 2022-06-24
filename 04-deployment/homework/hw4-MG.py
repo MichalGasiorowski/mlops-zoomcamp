@@ -18,8 +18,24 @@ import mlflow
 from prefect import task, flow, get_run_logger
 from prefect.context import get_run_context
 
+def read_data(filename):
+    categorical = ['PUlocationID', 'DOlocationID']
+    df = pd.read_parquet(filename)
+
+    df['duration'] = df.dropOff_datetime - df.pickup_datetime
+    df['duration'] = df.duration.dt.total_seconds() / 60
+
+    df = df[(df.duration >= 1) & (df.duration <= 60)].copy()
+
+    df[categorical] = df[categorical].fillna(-1).astype('int').astype('str')
+
+    df = preprocess_data(df)
+
+    return df
+
+
 def prepare_dictionaries(df: pd.DataFrame):
-    categorical = ['PULocationID', 'DOLocationID']
+    categorical = ['PUlocationID', 'DOlocationID']
 
     df[categorical] = df[categorical].astype(str)
 
@@ -29,6 +45,7 @@ def prepare_dictionaries(df: pd.DataFrame):
     df = df[(df.duration >= 1) & (df.duration <= 60)].copy()
 
     df[categorical] = df[categorical].fillna(-1).astype('int').astype('str')
+
     dicts = df[categorical].to_dict(orient='records')
 
     return dicts
@@ -46,19 +63,6 @@ def save_results(df, y_pred, output_file):
 
     df_result.to_parquet(output_file, index=False)
 
-categorical = ['PUlocationID', 'DOlocationID']
-
-def read_data(filename):
-    df = pd.read_parquet(filename)
-
-    df['duration'] = df.dropOff_datetime - df.pickup_datetime
-    df['duration'] = df.duration.dt.total_seconds() / 60
-
-    df = df[(df.duration >= 1) & (df.duration <= 60)].copy()
-
-    df[categorical] = df[categorical].fillna(-1).astype('int').astype('str')
-
-    return df
 
 def predict(dicts, dv, lr):
     X_val = dv.transform(dicts)
@@ -67,7 +71,6 @@ def predict(dicts, dv, lr):
     return y_pred
 
 def preprocess_data(df):
-    # df['ride_id'] = f'{year:04d}/{month:02d}_' + df.index.astype('str')
     df_copied = df.copy()
     df_copied["pickup_yyyy_mm"] = pd.to_datetime(df_copied['pickup_datetime']).dt.strftime('%Y/%m')
     # apply has to be used
@@ -75,19 +78,23 @@ def preprocess_data(df):
 
     return df_copied
 
+
 @task
 def apply_model(input_file, output_file):
     logger = get_run_logger()
 
     logger.info(f'reading the data from {input_file}...')
     df = read_data(input_file)
+    logger.info(f'df columns: {df.columns} ')
     dicts = prepare_dictionaries(df)
 
     logger.info(f'loading the model')
-    dv, lr = load_dv_model(run_id)
+    dv, lr = load_dv_model()
 
     logger.info(f'applying the model...')
     y_pred = predict(dicts, dv, lr)
+
+    logger.info(f'Mean predicted duration = {y_pred.mean():.2f}')
 
     logger.info(f'saving the result to {output_file}...')
 
@@ -95,20 +102,17 @@ def apply_model(input_file, output_file):
     return output_file
 
 
-def get_paths(run_date, run_id):
+def get_paths(run_date):
     prev_month = run_date - relativedelta(months=1)
     year = prev_month.year
     month = prev_month.month
     # https://nyc-tlc.s3.amazonaws.com/trip+data/fhv_tripdata_2021-03.parquet
     input_file = f'https://nyc-tlc.s3.amazonaws.com/trip+data/fhv_tripdata_{year:04d}-{month:02d}.parquet'
     #output_file = f's3://nyc-duration-prediction-alexey/taxi_type={taxi_type}/year={year:04d}/month={month:02d}/{run_id}.parquet'
-    output_file = f'./fhv_tripdata_year={year:04d}_month={month:02d}_{run_id}.parquet'
+    output_file = f'./fhv_tripdata_year={year:04d}_month={month:02d}.parquet'
 
     return input_file, output_file
 
-
-
-y_pred = predict(df, dv, lr)
 
 def save_result(df_result):
     df_result.to_parquet(
@@ -118,6 +122,7 @@ def save_result(df_result):
         index=False
     )
 
+@flow
 def ride_duration_prediction(
         run_date: datetime = None):
     if run_date is None:
@@ -134,8 +139,8 @@ def ride_duration_prediction(
 
 
 def run():
-    year = int(sys.argv[2]) # 2021
-    month = int(sys.argv[3]) # 3
+    year = int(sys.argv[1]) # 2021
+    month = int(sys.argv[2]) # 3
 
     ride_duration_prediction(
         run_date=datetime(year=year, month=month, day=1)
