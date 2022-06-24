@@ -1,8 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[2]:
-
 import os
 import sys
 
@@ -12,8 +7,7 @@ from datetime import datetime
 
 from dateutil.relativedelta import relativedelta
 
-
-import mlflow
+#import mlflow
 
 from prefect import task, flow, get_run_logger
 from prefect.context import get_run_context
