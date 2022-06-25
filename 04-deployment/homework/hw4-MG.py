@@ -1,11 +1,13 @@
 import os
+import uuid
+
 import sys
 
 import pickle
 import pandas as pd
 from datetime import datetime
 
-from dateutil.relativedelta import relativedelta
+#from dateutil.relativedelta import relativedelta
 
 #import mlflow
 
@@ -96,14 +98,12 @@ def apply_model(input_file, output_file):
     return output_file
 
 
-def get_paths(run_date):
-    prev_month = run_date - relativedelta(months=1)
-    year = prev_month.year
-    month = prev_month.month
-    # https://nyc-tlc.s3.amazonaws.com/trip+data/fhv_tripdata_2021-03.parquet
-    input_file = f'https://nyc-tlc.s3.amazonaws.com/trip+data/fhv_tripdata_{year:04d}-{month:02d}.parquet'
-    #output_file = f's3://nyc-duration-prediction-alexey/taxi_type={taxi_type}/year={year:04d}/month={month:02d}/{run_id}.parquet'
-    output_file = f'./fhv_tripdata_year={year:04d}_month={month:02d}.parquet'
+def get_paths(run_date: datetime, taxi_type, run_id):
+    year = run_date.year
+    month = run_date.month
+
+    input_file = f'https://nyc-tlc.s3.amazonaws.com/trip+data/{taxi_type}_tripdata_{year:04d}-{month:02d}.parquet'
+    output_file = f's3://nyc-duration-prediction-enkidupal/taxi_type={taxi_type}/year={year:04d}/month={month:02d}/{run_id}.parquet'
 
     return input_file, output_file
 
@@ -118,13 +118,14 @@ def save_result(df_result):
 
 @flow
 def ride_duration_prediction(
+        taxi_type: str,
         run_date: datetime = None):
     if run_date is None:
         ctx = get_run_context()
         run_date = ctx.flow_run.expected_start_time
 
-    #input_file, output_file = get_paths(run_date, taxi_type, run_id)
-    input_file, output_file = get_paths(run_date)
+    run_id = str(uuid.uuid4())
+    input_file, output_file = get_paths(run_date, taxi_type, run_id)
 
     apply_model(
         input_file=input_file,
@@ -133,10 +134,18 @@ def ride_duration_prediction(
 
 
 def run():
+    if len(sys.argv) < 3:
+        raise f'too few arguments: usage: {sys.argv[0]} year month taxi_type'
+        exit(1)
+
     year = int(sys.argv[1]) # 2021
     month = int(sys.argv[2]) # 3
+    taxi_type = 'fhv'
+    if len(sys.argv) > 3:
+        taxi_type = sys.argv[3] # 4
 
     ride_duration_prediction(
+        taxi_type = taxi_type,
         run_date=datetime(year=year, month=month, day=1)
     )
 
